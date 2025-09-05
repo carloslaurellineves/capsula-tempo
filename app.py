@@ -30,7 +30,7 @@ if not FOLDER_ID:
     raise RuntimeError("Defina FOLDER_ID no .env")
 
 # Configuração das credenciais da Service Account
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 # Prioridade: variável de ambiente (Railway) > arquivo local
 service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
