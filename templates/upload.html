@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Cápsula de Memórias 💍</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background:#fafafa; }
+    .card { max-width: 520px; margin: 24px auto; background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 6px 24px rgba(0,0,0,.08); }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    p { color: #444; line-height: 1.4; }
+    label { display:block; font-weight:600; margin-top:12px; }
+    input[type="text"], textarea, input[type="file"] { width:100%; padding:10px; border:1px solid #ddd; border-radius:10px; font-size:1rem; }
+    textarea { min-height:80px; }
+    button { margin-top:16px; width:100%; padding:12px; border:0; border-radius:12px; font-weight:700; font-size:1rem; background:#111; color:#fff; }
+    .ok { padding:10px; background:#e7ffe7; border:1px solid #b6efb6; border-radius:10px; margin-top:14px; }
+    .note { font-size:.9rem; color:#666; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Cápsula de Memórias do nosso casamento 💌</h1>
+    <p>Adicione aqui <b>fotos</b> e <b>vídeos</b> que você tenha registrado durante esse dia especial. Assim, colecionaremos memórias sob olhar de cada um. 📸 Obrigado! 🥂</p>
+
+    {% if ok %}
+      <div class="ok">Recebemos seu arquivo: <b>{{ uploaded_name }}</b>. Obrigado! 💖</div>
+      {% if webViewLink %}
+        <p class="note">Link no Drive (p/ organizadores): <a href="{{ webViewLink }}">{{ webViewLink }}</a></p>
+      {% endif %}
+    {% endif %}
+
+    <form method="post" action="/upload" enctype="multipart/form-data">
+      <label for="nome">Seu nome</label>
+      <input id="nome" name="nome" type="text" placeholder="Ex.: Tia Ana" required />
+
+      <label for="mensagem">Uma mensagem curta (opcional)</label>
+      <textarea id="mensagem" name="mensagem" placeholder="Deixem o amor de vocês sempre vencer ✨"></textarea>
+
+      <label for="file">Arquivo</label>
+      <input id="file" name="file" type="file" accept="image/*,video/*,.pdf,.txt,.zip" required />
+
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+        <input type="checkbox" name="consentimento" value="true" required />
+        Autorizo os noivos a guardarem e exibirem este conteúdo para a família.
+      </label>
+
+      <button type="submit">Enviar para a Cápsula</button>
+      <p class="note">Tamanho máx.: {{ max_mb }} MB (vídeos grandes podem demorar)</p>
+    </form>
+  </div>
+</body>
+</html>
