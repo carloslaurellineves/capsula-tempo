@@ -2,7 +2,7 @@
 
 > **Uma forma especial e moderna de preservar memórias do seu grande dia!**
 
-Este projeto permite que os convidados do casamento, ao escanear um **QR Code**, sejam redirecionados para uma página web onde podem enviar fotos, vídeos ou arquivos especiais diretamente para uma pasta compartilhada no Google Drive. É uma maneira única de criar uma cápsula digital com todas as memórias do evento.
+Este projeto permite que os convidados do casamento, ao escanear um **QR Code**, sejam redirecionados para uma página web onde podem enviar **múltiplos arquivos** (fotos, vídeos, etc.) de uma só vez diretamente para uma pasta compartilhada no Google Drive. É uma maneira única de criar uma cápsula digital com todas as memórias do evento.
 
 ## 🎯 Como Funciona
 
@@ -124,6 +124,24 @@ Este script testa:
 - ✅ Acesso à pasta (incluindo Shared Drives)
 - ✅ Upload de arquivo de teste
 
+### 🖼️ Teste de Múltiplos Arquivos
+
+Para testar especificamente a funcionalidade de múltiplos arquivos:
+
+```bash
+# Primeiro, inicie o servidor em um terminal
+uv run app.py
+
+# Em outro terminal, execute o teste
+uv run test_multiple_files.py
+```
+
+Este teste:
+- 📁 Cria 3 arquivos de teste
+- 🚀 Testa upload múltiplo via HTTP
+- ✅ Valida resposta do servidor
+- 🧩 Limpa arquivos de teste automaticamente
+
 ## 🚄 Deploy no Railway
 
 ### 1. Prepare os Arquivos
@@ -179,6 +197,16 @@ Esta URL será usada no seu QR Code! 📱
 - **Validação de tipos** de arquivo aceitos
 - **Sanitização** do nome do convidado
 - **Verificação** de arquivos vazios
+
+### 🚀 Funcionalidades do Upload Múltiplo
+
+- **Até 10 arquivos** por upload
+- **Preview em tempo real** dos arquivos selecionados
+- **Validação individual** de tamanho e tipo
+- **Upload em lote** com controle de erro robusto
+- **Relatório detalhado** de sucessos e falhas
+- **Compatibilidade total** com uploads únicos antigos
+- **Nomeação sequencial** automática dos arquivos
 
 ### 🛡️ Melhorias Opcionais
 
@@ -237,8 +265,9 @@ capsula-tempo/
 │
 ├── app.py                    # Aplicação FastAPI principal ✨
 ├── test_google_drive.py      # Script de teste completo 🧪
+├── test_multiple_files.py    # Teste de múltiplos arquivos 🖼️
 ├── templates/
-│   └── upload.html           # Interface web
+│   └── upload.html           # Interface web com suporte múltiplo
 ├── pyproject.toml            # Configuração uv
 ├── requirements.txt          # Dependências Python
 ├── Procfile                 # Configuração Railway

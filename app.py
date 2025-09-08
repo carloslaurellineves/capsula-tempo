@@ -76,45 +76,96 @@ async def form(request: Request):
 @app.post("/upload")
 async def handle_upload(
     request: Request,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     nome: str = Form("Convidado(a)"),
     mensagem: str = Form(""),
     consentimento: bool = Form(False),
 ):
-    logger.info(f"Iniciando upload para usuário: {nome}, arquivo: {file.filename}")
+    # Configurações para múltiplos arquivos
+    MAX_FILES_PER_UPLOAD = 10  # máximo 10 arquivos por vez
+    
+    logger.info(f"Iniciando upload para usuário: {nome}, {len(files)} arquivo(s)")
     
     try:
-        # Checagens básicas
-        size_hdr = request.headers.get("content-length")
-        if size_hdr:
-            total_mb = int(size_hdr) / (1024 * 1024)
-            if total_mb > (MAX_MB + 5):  # margem
-                logger.warning(f"Arquivo muito grande: {total_mb:.2f}MB")
-                raise HTTPException(status_code=413, detail="Arquivo muito grande.")
+        # Validações básicas para múltiplos arquivos
+        if len(files) == 0:
+            logger.warning("Nenhum arquivo enviado")
+            raise HTTPException(status_code=400, detail="Nenhum arquivo foi selecionado.")
+        
+        if len(files) > MAX_FILES_PER_UPLOAD:
+            logger.warning(f"Muitos arquivos: {len(files)} (máx: {MAX_FILES_PER_UPLOAD})")
+            raise HTTPException(status_code=413, detail=f"Máximo {MAX_FILES_PER_UPLOAD} arquivos por upload.")
 
         if not consentimento:
             logger.warning("Upload rejeitado: consentimento não aceito")
             raise HTTPException(status_code=400, detail="É necessário aceitar o consentimento.")
 
-        # Lê em memória (para produção, considere stream/chunk)
-        content = await file.read()
-        if len(content) == 0:
-            logger.warning("Arquivo vazio enviado")
-            raise HTTPException(status_code=400, detail="Arquivo vazio.")
+        # Processar e validar todos os arquivos primeiro
+        file_data_list = []
+        total_size_bytes = 0
         
-        logger.info(f"Arquivo lido com sucesso: {len(content)} bytes")
+        for i, file in enumerate(files, 1):
+            logger.info(f"Processando arquivo {i}/{len(files)}: {file.filename}")
+            
+            # Ler conteúdo do arquivo
+            content = await file.read()
+            if len(content) == 0:
+                logger.warning(f"Arquivo vazio: {file.filename}")
+                raise HTTPException(status_code=400, detail=f"Arquivo vazio: {file.filename}")
+            
+            # Verificar tamanho individual
+            file_size_mb = len(content) / (1024 * 1024)
+            if file_size_mb > MAX_MB:
+                logger.warning(f"Arquivo muito grande: {file.filename} ({file_size_mb:.2f}MB)")
+                raise HTTPException(status_code=413, detail=f"Arquivo '{file.filename}' excede {MAX_MB}MB")
+            
+            total_size_bytes += len(content)
+            
+            # Validar tipos de arquivo permitidos
+            allowed_types = {
+                'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp',
+                'video/mp4', 'video/avi', 'video/mov', 'video/wmv', 'video/quicktime',
+                'application/pdf', 'text/plain', 'application/zip'
+            }
+            
+            if file.content_type and file.content_type not in allowed_types:
+                logger.warning(f"Tipo de arquivo não permitido: {file.filename} ({file.content_type})")
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Tipo de arquivo não permitido: {file.filename}"
+                )
+            
+            # Preparar dados para upload
+            ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+            safe_guest = "".join(c for c in nome if c.isalnum() or c in " -_").strip()[:60] or "Convidado"
+            drive_filename = f"{ts}__{safe_guest}__{i:02d}__{file.filename}"
+            
+            file_data_list.append({
+                'content': content,
+                'filename': drive_filename,
+                'original_filename': file.filename,
+                'content_type': file.content_type,
+                'size_bytes': len(content)
+            })
+        
+        # Verificar tamanho total do lote
+        total_size_mb = total_size_bytes / (1024 * 1024)
+        max_total_mb = MAX_MB * len(files)  # Limite flexível baseado no número de arquivos
+        
+        if total_size_mb > max_total_mb:
+            logger.warning(f"Lote muito grande: {total_size_mb:.2f}MB (máx: {max_total_mb:.2f}MB)")
+            raise HTTPException(
+                status_code=413, 
+                detail=f"Tamanho total do lote ({total_size_mb:.1f}MB) excede o limite ({max_total_mb:.0f}MB)"
+            )
+        
+        logger.info(f"Todos os arquivos validados. Tamanho total: {total_size_mb:.2f}MB")
 
-        # Monta nome de arquivo no Drive
-        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-        safe_guest = "".join(c for c in nome if c.isalnum() or c in " -_").strip()[:60] or "Convidado"
-        drive_filename = f"{ts}__{safe_guest}__{file.filename}"
-        logger.info(f"Nome do arquivo no Drive: {drive_filename}")
-
-        # Metadata + upload
+        # Conectar ao Google Drive API
         logger.info("Iniciando conexão com Google Drive API...")
         service = build("drive", "v3", credentials=CREDS)
         
-        # Primeiro, verificar se a pasta existe (com suporte a Shared Drives)
+        # Verificar se a pasta existe (com suporte a Shared Drives)
         try:
             folder_info = service.files().get(
                 fileId=FOLDER_ID, 
@@ -132,34 +183,79 @@ async def handle_upload(
                 logger.error(f"Erro ao acessar pasta: {e}")
                 raise HTTPException(status_code=500, detail=f"Erro ao acessar pasta do Google Drive: {e}")
         
-        file_metadata = {
-            "name": drive_filename,
-            "parents": [FOLDER_ID],
-            "description": f"Upload da cápsula do tempo\nConvidado: {nome}\nMensagem: {mensagem}",
-        }
+        # Upload em lote com controle de erro
+        uploaded_files = []
+        failed_files = []
         
-        logger.info("Iniciando upload para o Google Drive...")
-        media = MediaIoBaseUpload(io.BytesIO(content), mimetype=file.content_type, resumable=True)
-        uploaded = service.files().create(
-            body=file_metadata, 
-            media_body=media, 
-            supportsAllDrives=True,
-            fields="id,name,webViewLink"
-        ).execute()
+        logger.info(f"Iniciando upload de {len(file_data_list)} arquivo(s) para o Google Drive...")
         
-        logger.info(f"Upload concluído com sucesso! ID: {uploaded['id']}")
+        for i, file_data in enumerate(file_data_list, 1):
+            try:
+                logger.info(f"Fazendo upload {i}/{len(file_data_list)}: {file_data['original_filename']}")
+                
+                file_metadata = {
+                    "name": file_data['filename'],
+                    "parents": [FOLDER_ID],
+                    "description": f"Upload da cápsula do tempo\nConvidado: {nome}\nMensagem: {mensagem}\nArquivo {i} de {len(file_data_list)}",
+                }
+                
+                media = MediaIoBaseUpload(
+                    io.BytesIO(file_data['content']), 
+                    mimetype=file_data['content_type'], 
+                    resumable=True
+                )
+                
+                uploaded = service.files().create(
+                    body=file_metadata, 
+                    media_body=media, 
+                    supportsAllDrives=True,
+                    fields="id,name,webViewLink"
+                ).execute()
+                
+                uploaded_files.append({
+                    'id': uploaded['id'],
+                    'name': uploaded['name'],
+                    'original_filename': file_data['original_filename'],
+                    'webViewLink': uploaded.get('webViewLink'),
+                    'size_mb': file_data['size_bytes'] / (1024 * 1024)
+                })
+                
+                logger.info(f"Upload {i} concluído com sucesso! ID: {uploaded['id']}")
+                
+            except Exception as upload_error:
+                error_msg = f"Erro no upload de '{file_data['original_filename']}': {str(upload_error)}"
+                logger.error(error_msg)
+                failed_files.append({
+                    'filename': file_data['original_filename'],
+                    'error': str(upload_error)
+                })
+        
+        # Verificar resultado do lote
+        if len(uploaded_files) == 0:
+            logger.error("Nenhum arquivo foi enviado com sucesso")
+            raise HTTPException(status_code=500, detail="Falha no upload de todos os arquivos")
+        
+        success_count = len(uploaded_files)
+        total_count = len(file_data_list)
+        
+        if len(failed_files) > 0:
+            logger.warning(f"Upload parcial: {success_count}/{total_count} arquivos enviados")
+        else:
+            logger.info(f"Upload completo: {success_count}/{total_count} arquivos enviados com sucesso!")
 
-        # (Opcional) tornar o arquivo visível por link (só leitura)
-        # service.permissions().create(fileId=uploaded["id"], body={"role":"reader","type":"anyone"}).execute()
-
+        # Preparar dados para o template
         return templates.TemplateResponse(
             "upload.html",
             {
                 "request": request,
                 "ok": True,
-                "uploaded_name": uploaded["name"],
-                "webViewLink": uploaded.get("webViewLink"),
+                "uploaded_files": uploaded_files,
+                "failed_files": failed_files,
+                "success_count": success_count,
+                "total_count": total_count,
+                "total_size_mb": round(total_size_mb, 2),
                 "max_mb": MAX_MB,
+                "multiple_files": True,
             },
         )
     

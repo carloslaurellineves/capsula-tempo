@@ -14,18 +14,58 @@
     textarea { min-height:80px; }
     button { margin-top:16px; width:100%; padding:12px; border:0; border-radius:12px; font-weight:700; font-size:1rem; background:#111; color:#fff; }
     .ok { padding:10px; background:#e7ffe7; border:1px solid #b6efb6; border-radius:10px; margin-top:14px; }
+    .warning { padding:10px; background:#fff4e6; border:1px solid #ffd700; border-radius:10px; margin-top:10px; }
     .note { font-size:.9rem; color:#666; }
+    .file-preview { margin-top: 10px; padding: 8px; background: #f8f9fa; border-radius: 8px; font-size: 0.9rem; }
+    .file-item { margin: 4px 0; color: #666; }
+    .upload-summary { margin-top: 10px; font-weight: 600; }
+    .failed-file { color: #d32f2f; margin: 4px 0; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Cápsula de Memórias do nosso casamento 💌</h1>
     <p>Adicione aqui <b>fotos</b> e <b>vídeos</b> que você tenha registrado durante esse dia especial. Assim, colecionaremos memórias sob olhar de cada um. 📸 Obrigado! 🥂</p>
+    <p class="note">📁 Você pode selecionar <strong>múltiplos arquivos</strong> de uma só vez. (Máx: 10 arquivos)</p>
 
     {% if ok %}
-      <div class="ok">Recebemos seu arquivo: <b>{{ uploaded_name }}</b>. Obrigado! 💖</div>
-      {% if webViewLink %}
-        <p class="note">Link no Drive (p/ organizadores): <a href="{{ webViewLink }}">{{ webViewLink }}</a></p>
+      {% if multiple_files %}
+        <div class="ok">
+          <div class="upload-summary">
+            🎉 Upload concluído! {{ success_count }} de {{ total_count }} arquivo(s) enviado(s) com sucesso!
+          </div>
+          <p class="note">Tamanho total: {{ total_size_mb }}MB</p>
+          
+          {% if uploaded_files %}
+            <div class="file-preview">
+              <strong>✅ Arquivos enviados:</strong>
+              {% for file in uploaded_files %}
+                <div class="file-item">
+                  • {{ file.original_filename }} ({{ "%.1f"|format(file.size_mb) }}MB)
+                  {% if file.webViewLink %}
+                    <a href="{{ file.webViewLink }}" target="_blank" style="font-size:0.8rem; margin-left:8px;">[ver]</a>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          
+          {% if failed_files %}
+            <div class="warning">
+              <strong>⚠️ Alguns arquivos falharam:</strong>
+              {% for file in failed_files %}
+                <div class="failed-file">• {{ file.filename }}</div>
+              {% endfor %}
+              <p class="note">Tente enviar os arquivos que falharam novamente.</p>
+            </div>
+          {% endif %}
+        </div>
+      {% else %}
+        <!-- Compatibilidade com upload único antigo -->
+        <div class="ok">Recebemos seu arquivo: <b>{{ uploaded_name }}</b>. Obrigado! 💖</div>
+        {% if webViewLink %}
+          <p class="note">Link no Drive (p/ organizadores): <a href="{{ webViewLink }}">{{ webViewLink }}</a></p>
+        {% endif %}
       {% endif %}
     {% endif %}
 
@@ -33,11 +73,16 @@
       <label for="nome">Seu nome</label>
       <input id="nome" name="nome" type="text" placeholder="Ex.: Tia Ana" required />
 
-      <label for="mensagem">Uma mensagem curta (opcional)</label>
-      <textarea id="mensagem" name="mensagem" placeholder="Deixem o amor de vocês sempre vencer ✨"></textarea>
+      <!--<label for="mensagem">Uma mensagem curta (opcional)</label>
+      <textarea id="mensagem" name="mensagem" placeholder="Deixem o amor de vocês sempre vencer ✨"></textarea>-->
 
-      <label for="file">Arquivo</label>
-      <input id="file" name="file" type="file" accept="image/*,video/*,.pdf,.txt,.zip" required />
+      <label for="files">Arquivos (imagens e vídeos)</label>
+      <input id="files" name="files" type="file" accept="image/*,video/*,.pdf,.txt,.zip" multiple required />
+      <div class="file-preview" id="filePreview" style="display:none;">
+        <strong>Arquivos selecionados:</strong>
+        <div id="fileList"></div>
+        <div id="totalSize" class="note" style="margin-top:8px;"></div>
+      </div>
 
       <label style="display:flex;align-items:center;gap:8px;margin-top:12px;">
         <input type="checkbox" name="consentimento" value="true" required />
@@ -45,8 +90,69 @@
       </label>
 
       <button type="submit">Enviar para a Cápsula</button>
-      <p class="note">Tamanho máx.: {{ max_mb }} MB (vídeos grandes podem demorar)</p>
+      <p class="note">Tamanho máx.: {{ max_mb }} MB por arquivo | Máx: 10 arquivos por envio</p>
     </form>
   </div>
+  
+  <script>
+    // Preview dos arquivos selecionados
+    const fileInput = document.getElementById('files');
+    const filePreview = document.getElementById('filePreview');
+    const fileList = document.getElementById('fileList');
+    const totalSize = document.getElementById('totalSize');
+    const maxMB = {{ max_mb }};
+    const maxFiles = 10;
+    
+    fileInput.addEventListener('change', function(e) {
+      const files = Array.from(e.target.files);
+      
+      if (files.length === 0) {
+        filePreview.style.display = 'none';
+        return;
+      }
+      
+      // Verificar limites
+      let warnings = [];
+      if (files.length > maxFiles) {
+        warnings.push(`Máximo ${maxFiles} arquivos permitidos (${files.length} selecionados)`);
+      }
+      
+      let totalSizeBytes = 0;
+      let fileListHTML = '';
+      
+      files.forEach((file, index) => {
+        const sizeMB = file.size / (1024 * 1024);
+        totalSizeBytes += file.size;
+        
+        let statusIcon = '✅';
+        if (sizeMB > maxMB) {
+          statusIcon = '❌';
+          warnings.push(`'${file.name}' excede ${maxMB}MB`);
+        }
+        
+        fileListHTML += `
+          <div class="file-item">
+            ${statusIcon} ${file.name} (${sizeMB.toFixed(1)}MB)
+          </div>
+        `;
+      });
+      
+      const totalSizeMB = totalSizeBytes / (1024 * 1024);
+      
+      fileList.innerHTML = fileListHTML;
+      
+      let sizeText = `Tamanho total: ${totalSizeMB.toFixed(1)}MB`;
+      if (warnings.length > 0) {
+        sizeText += ` | ⚠️ ${warnings.join(', ')}`;
+        totalSize.style.color = '#d32f2f';
+      } else {
+        sizeText += ' ✅';
+        totalSize.style.color = '#2e7d32';
+      }
+      
+      totalSize.innerHTML = sizeText;
+      filePreview.style.display = 'block';
+    });
+  </script>
 </body>
 </html>
