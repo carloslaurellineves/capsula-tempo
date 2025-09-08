@@ -42,9 +42,13 @@ Antes de começar, você precisará de:
 
 ### 3. Configurar Pasta no Drive
 
-1. Crie uma pasta no Google Drive onde os arquivos serão salvos
-2. Copie o **ID da pasta** da URL (a parte após `/folders/`)
-3. Compartilhe a pasta com o email da service account (permissão de **Editor**)
+⚠️ **IMPORTANTE:** Para service accounts funcionarem corretamente, você precisa usar um **Shared Drive**.
+
+1. No Google Drive, clique em **"Novo" > "Shared drive"**
+2. Dê um nome ao Shared Drive (ex: "Cápsula do Tempo")
+3. Adicione a service account como membro com permissão de **"Manager"**
+4. Crie uma pasta dentro do Shared Drive
+5. Copie o **ID da pasta** da URL (a parte após `/folders/`)
 
 ## 🚀 Instalação e Configuração
 
@@ -57,6 +61,17 @@ cd capsula-tempo-casamento
 
 ### 2. Instale as Dependências
 
+Este projeto usa **uv** como package manager:
+
+```bash
+# Se você não tem o uv instalado:
+pip install uv
+
+# Instalar dependências:
+uv sync
+```
+
+Ou use pip tradicional:
 ```bash
 pip install -r requirements.txt
 ```
@@ -83,11 +98,31 @@ GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 
 ## 💻 Execução Local
 
+Com uv:
+```bash
+uv run app.py
+```
+
+Ou tradicionalmente:
 ```bash
 uvicorn app:app --reload --port 8000
 ```
 
 Acesse: `http://localhost:8000/upload`
+
+## 🧪 Teste da Configuração
+
+Antes de usar em produção, teste se tudo está funcionando:
+
+```bash
+uv run test_google_drive.py
+```
+
+Este script testa:
+- ✅ Variáveis de ambiente
+- ✅ Autenticação com Google Drive
+- ✅ Acesso à pasta (incluindo Shared Drives)
+- ✅ Upload de arquivo de teste
 
 ## 🚄 Deploy no Railway
 
@@ -198,16 +233,19 @@ Use qualquer gerador de QR Code online com sua URL do Railway:
 ## 📋 Estrutura do Projeto
 
 ```
-capsula-tempo-casamento/
+capsula-tempo/
 │
-├── app.py                 # Aplicação FastAPI principal
+├── app.py                    # Aplicação FastAPI principal ✨
+├── test_google_drive.py      # Script de teste completo 🧪
 ├── templates/
-│   └── upload.html        # Interface web
-├── requirements.txt       # Dependências Python
-├── Procfile              # Configuração Railway
-├── .env                  # Variáveis de ambiente (local)
-├── service_account.json  # Credenciais Google (local apenas)
-└── README.md            # Este arquivo
+│   └── upload.html           # Interface web
+├── pyproject.toml            # Configuração uv
+├── requirements.txt          # Dependências Python
+├── Procfile                 # Configuração Railway
+├── .env                     # Variáveis de ambiente (local)
+├── .env.example             # Exemplo de configuração
+├── service_account.json     # Credenciais Google (local apenas)
+└── README.md               # Este arquivo
 ```
 
 ## 🔧 Próximos Passos e Melhorias
@@ -234,17 +272,32 @@ capsula-tempo-casamento/
 
 ## 🆘 Solução de Problemas
 
+### 🧪 Execute o teste primeiro!
+Antes de tudo, execute o diagnóstico completo:
+```bash
+uv run test_google_drive.py
+```
+
+### Erro "storageQuotaExceeded"
+⚠️ **Service accounts não têm quota de armazenamento!**
+- **Solução:** Use um Shared Drive (conforme instruções acima)
+- Mova sua pasta para dentro de um Shared Drive
+- Adicione a service account como membro do Shared Drive
+
 ### Erro "FOLDER_ID não definido"
 - Verifique se a variável `FOLDER_ID` está configurada corretamente
 - Confirme se o ID foi copiado corretamente da URL do Drive
+- Não inclua parâmetros da URL (?usp=... etc)
 
 ### Erro de permissões no Google Drive
 - Verifique se a pasta foi compartilhada com o email da service account
 - Confirme se a Drive API está ativada no projeto
+- Para Shared Drives: adicione a service account como **Manager**
 
 ### Upload falha no Railway
 - Verifique se `GOOGLE_SERVICE_ACCOUNT_JSON` está configurado
 - Confirme se o JSON está em uma única linha (sem quebras)
+- Use uma pasta dentro de um Shared Drive
 
 ### QR Code não funciona
 - Teste a URL diretamente no navegador

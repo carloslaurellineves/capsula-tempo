@@ -114,9 +114,12 @@ async def handle_upload(
         logger.info("Iniciando conexão com Google Drive API...")
         service = build("drive", "v3", credentials=CREDS)
         
-        # Primeiro, verificar se a pasta existe
+        # Primeiro, verificar se a pasta existe (com suporte a Shared Drives)
         try:
-            folder_info = service.files().get(fileId=FOLDER_ID).execute()
+            folder_info = service.files().get(
+                fileId=FOLDER_ID, 
+                supportsAllDrives=True
+            ).execute()
             logger.info(f"Pasta encontrada: {folder_info['name']}")
         except HttpError as e:
             if e.resp.status == 404:
@@ -137,7 +140,12 @@ async def handle_upload(
         
         logger.info("Iniciando upload para o Google Drive...")
         media = MediaIoBaseUpload(io.BytesIO(content), mimetype=file.content_type, resumable=True)
-        uploaded = service.files().create(body=file_metadata, media_body=media, fields="id,name,webViewLink").execute()
+        uploaded = service.files().create(
+            body=file_metadata, 
+            media_body=media, 
+            supportsAllDrives=True,
+            fields="id,name,webViewLink"
+        ).execute()
         
         logger.info(f"Upload concluído com sucesso! ID: {uploaded['id']}")
 
